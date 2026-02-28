@@ -43,10 +43,6 @@ lc snap <name> <snapshot>
 lc restore <name> <snapshot>
 ```
 
-Notes:
-- `lc ls` now uses color in interactive terminals.
-- Disable with `--no-color` or environment variable `NO_COLOR=1`.
-
 ## tui keybinds
 
 - `j` / `k` or arrows: move selection
