@@ -2,6 +2,8 @@ package lxd
 
 import (
 	"encoding/json"
+	"fmt"
+	"sort"
 	"strings"
 
 	"lazycontainer/internal/core"
@@ -64,4 +66,76 @@ func parseListJSON(in []byte) ([]core.Instance, error) {
 	}
 
 	return instances, nil
+}
+
+type imageRecord struct {
+	Fingerprint string `json:"fingerprint"`
+	Aliases     []struct {
+		Name string `json:"name"`
+	} `json:"aliases"`
+	Properties map[string]string `json:"properties"`
+}
+
+func parseImageAliasesJSON(in []byte) ([]string, error) {
+	var records []imageRecord
+	if err := json.Unmarshal(in, &records); err != nil {
+		return nil, err
+	}
+	seen := map[string]struct{}{}
+	aliases := make([]string, 0, len(records))
+	for _, r := range records {
+		for _, a := range r.Aliases {
+			name := strings.TrimSpace(a.Name)
+			if name == "" {
+				continue
+			}
+			if _, ok := seen[name]; ok {
+				continue
+			}
+			seen[name] = struct{}{}
+			aliases = append(aliases, name)
+		}
+	}
+	sort.Strings(aliases)
+	return aliases, nil
+}
+
+func parseImageListJSON(in []byte) (string, error) {
+	aliases, err := parseImageAliasesJSON(in)
+	if err != nil {
+		return "", err
+	}
+	if len(aliases) == 0 {
+		return "No images found", nil
+	}
+
+	var records []imageRecord
+	if err := json.Unmarshal(in, &records); err != nil {
+		return "", err
+	}
+	lines := make([]string, 0, len(records)+1)
+	lines = append(lines, "Available images (remote: images:)")
+	for _, r := range records {
+		alias := "-"
+		for _, a := range r.Aliases {
+			if strings.TrimSpace(a.Name) != "" {
+				alias = a.Name
+				break
+			}
+		}
+		desc := "-"
+		if r.Properties != nil {
+			if v := strings.TrimSpace(r.Properties["description"]); v != "" {
+				desc = v
+			} else if v := strings.TrimSpace(r.Properties["os"]); v != "" {
+				desc = v
+			}
+		}
+		fp := r.Fingerprint
+		if len(fp) > 12 {
+			fp = fp[:12]
+		}
+		lines = append(lines, fmt.Sprintf("- %-24s %-12s %s", alias, fp, desc))
+	}
+	return strings.Join(lines, "\n"), nil
 }

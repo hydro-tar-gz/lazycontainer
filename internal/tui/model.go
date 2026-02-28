@@ -53,6 +53,16 @@ type cliCmdDoneMsg struct {
 	err error
 }
 
+type imageAliasesLoadedMsg struct {
+	aliases []string
+	err     error
+}
+
+const (
+	createStepImage = iota
+	createStepName
+)
+
 type model struct {
 	backend core.Backend
 	theme   theme
@@ -75,6 +85,10 @@ type model struct {
 	execInput textinput.Model
 	showExec  bool
 
+	createInput textinput.Model
+	showCreate  bool
+	createStep  int
+
 	cliInput textinput.Model
 
 	showDeleteConfirm bool
@@ -88,6 +102,12 @@ type model struct {
 	rightContent string
 	status       string
 	loading      bool
+
+	availableImages     []string
+	filteredImages      []string
+	createImageCursor   int
+	selectedCreateImage string
+	loadingImages       bool
 }
 
 func NewModel(backend core.Backend) model {
@@ -110,6 +130,10 @@ func NewModel(backend core.Backend) model {
 	e.Placeholder = "Command (example: uname -a)"
 	e.Blur()
 
+	c := textinput.New()
+	c.Placeholder = "Filter image aliases"
+	c.Blur()
+
 	cli := textinput.New()
 	cli.Placeholder = "Type lazy command args (example: ls --json)"
 	cli.Blur()
@@ -118,17 +142,18 @@ func NewModel(backend core.Backend) model {
 	vp.SetContent("Select an instance")
 
 	return model{
-		backend:   backend,
-		theme:     uiTheme,
-		table:     t,
-		vp:        vp,
-		search:    s,
-		execInput: e,
-		cliInput:  cli,
-		modes:     []string{"UI", "CLI"},
-		tabs:      []string{"Info", "Logs", "Snapshots"},
-		status:    "Loading instances...",
-		loading:   true,
+		backend:     backend,
+		theme:       uiTheme,
+		table:       t,
+		vp:          vp,
+		search:      s,
+		execInput:   e,
+		createInput: c,
+		cliInput:    cli,
+		modes:       []string{"UI", "CLI"},
+		tabs:        []string{"Info", "Logs", "Snapshots"},
+		status:      "Loading instances...",
+		loading:     true,
 	}
 }
 
@@ -168,6 +193,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.setRightContent(msg.content)
+		return m, nil
+
+	case imageAliasesLoadedMsg:
+		m.loadingImages = false
+		if msg.err != nil {
+			m.status = "Failed to load images: " + msg.err.Error()
+			return m, nil
+		}
+		m.availableImages = msg.aliases
+		m.filterCreateImages()
+		if len(m.filteredImages) == 0 {
+			m.status = "No remote images found"
+		} else {
+			m.status = fmt.Sprintf("Loaded %d image alias(es)", len(m.filteredImages))
+		}
 		return m, nil
 
 	case actionDoneMsg:
@@ -236,7 +276,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if cmdLine == "" {
 					return m, nil
 				}
-				m.status = "Running: lazy " + cmdLine
+				m.status = "Running: lc " + cmdLine
 				return m, runLocalLazyCmd(cmdLine)
 			case "esc":
 				m.cliInput.SetValue("")
@@ -266,6 +306,62 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			var cmd tea.Cmd
 			m.execInput, cmd = m.execInput.Update(msg)
+			return m, cmd
+		}
+
+		if m.showCreate {
+			switch msg.String() {
+			case "esc":
+				m.showCreate = false
+				m.createInput.Blur()
+				m.createStep = createStepImage
+				return m, nil
+			case "up", "k":
+				if m.createStep == createStepImage && len(m.filteredImages) > 0 && m.createImageCursor > 0 {
+					m.createImageCursor--
+				}
+				return m, nil
+			case "down", "j":
+				if m.createStep == createStepImage && len(m.filteredImages) > 0 && m.createImageCursor < len(m.filteredImages)-1 {
+					m.createImageCursor++
+				}
+				return m, nil
+			case "enter":
+				if m.createStep == createStepImage {
+					image := m.selectedImageAlias()
+					if image == "" {
+						m.status = "No image selected"
+						return m, nil
+					}
+					m.selectedCreateImage = normalizeImageRef(image)
+					m.createStep = createStepName
+					m.createInput.SetValue("")
+					m.createInput.Placeholder = "Container name"
+					m.status = "Selected image: " + m.selectedCreateImage + " (enter container name)"
+					return m, nil
+				}
+				name := strings.TrimSpace(m.createInput.Value())
+				if name == "" {
+					m.status = "Container name is required"
+					return m, nil
+				}
+				image := m.selectedCreateImage
+				if image == "" {
+					m.status = "Image selection is required"
+					return m, nil
+				}
+				m.showCreate = false
+				m.createInput.Blur()
+				m.createStep = createStepImage
+				m.createInput.Placeholder = "Filter image aliases"
+				m.status = "Creating " + name + " from " + image + "..."
+				return m, createCmd(m.backend, image, name)
+			}
+			var cmd tea.Cmd
+			m.createInput, cmd = m.createInput.Update(msg)
+			if m.createStep == createStepImage {
+				m.filterCreateImages()
+			}
 			return m, cmd
 		}
 
@@ -328,6 +424,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.execInput.SetValue("")
 			m.execInput.Focus()
 			return m, nil
+		case "u":
+			m.showCreate = true
+			m.createStep = createStepImage
+			m.selectedCreateImage = ""
+			m.createInput.SetValue("")
+			m.createInput.Placeholder = "Filter image aliases"
+			m.createInput.Focus()
+			m.loadingImages = true
+			m.status = "Loading available images..."
+			return m, loadImageAliasesCmd(m.backend)
 		case "s":
 			inst := m.selectedInstance()
 			if inst == nil {
@@ -368,7 +474,7 @@ func (m model) View() string {
 	if m.activeMode == modeCLI {
 		body := m.theme.panel.Render(
 			m.theme.title.Render("CLI") + "\n" +
-				m.theme.inactiveItem.Render("Run command args after `lazy` (example: ls --json)") + "\n" +
+				m.theme.inactiveItem.Render("Run command args after `lc` (example: ls --json)") + "\n" +
 				m.cliInput.View() + "\n\n" + m.vp.View(),
 		)
 		help := "enter: run command • esc: clear input • tab: switch mode • q: quit"
@@ -400,12 +506,15 @@ func (m model) View() string {
 
 	body := lipgloss.JoinHorizontal(lipgloss.Top, leftPane, rightPane)
 
-	help := "j/k or arrows: move • /: search • r: refresh • enter: shell • e: exec • s: start/stop • d: delete • t: detail tabs • tab: mode • q: quit"
+	help := "j/k or arrows: move • /: search • r: refresh • u: create • enter: shell • e: exec • s: start/stop • d: delete • t: detail tabs • tab: mode • q: quit"
 	if m.showDeleteConfirm {
 		help = "Delete selected instance? (y/N)"
 	}
 	if m.showExec {
 		help = "Exec command: " + m.execInput.View()
+	}
+	if m.showCreate {
+		help = m.createModalHelp()
 	}
 
 	footer := m.theme.footer.Render(help)
@@ -438,6 +547,8 @@ func (m *model) switchMode() {
 		m.searchFocused = false
 		m.search.Blur()
 		m.showExec = false
+		m.showCreate = false
+		m.createStep = createStepImage
 		m.showDeleteConfirm = false
 		m.cliInput.Focus()
 		m.status = "CLI mode"
@@ -467,6 +578,59 @@ func (m *model) applyFilter() {
 	if m.table.Cursor() >= len(rows) {
 		m.table.SetCursor(len(rows) - 1)
 	}
+}
+
+func (m *model) filterCreateImages() {
+	query := strings.ToLower(strings.TrimSpace(m.createInput.Value()))
+	m.filteredImages = m.filteredImages[:0]
+	for _, alias := range m.availableImages {
+		if query == "" || strings.Contains(strings.ToLower(alias), query) {
+			m.filteredImages = append(m.filteredImages, alias)
+		}
+	}
+	if m.createImageCursor >= len(m.filteredImages) {
+		m.createImageCursor = max(0, len(m.filteredImages)-1)
+	}
+}
+
+func (m model) selectedImageAlias() string {
+	if typed := strings.TrimSpace(m.createInput.Value()); typed != "" {
+		for _, alias := range m.filteredImages {
+			if alias == typed {
+				return alias
+			}
+		}
+	}
+	if len(m.filteredImages) == 0 {
+		return ""
+	}
+	if m.createImageCursor < 0 || m.createImageCursor >= len(m.filteredImages) {
+		return m.filteredImages[0]
+	}
+	return m.filteredImages[m.createImageCursor]
+}
+
+func (m model) createModalHelp() string {
+	if m.createStep == createStepName {
+		return "Create from " + m.selectedCreateImage + " | name: " + m.createInput.View() + " (enter=create, esc=cancel)"
+	}
+	if m.loadingImages {
+		return "Loading image aliases..."
+	}
+	lines := []string{"Image: " + m.createInput.View() + " (j/k to select, enter=pick, esc=cancel)"}
+	if len(m.filteredImages) == 0 {
+		lines = append(lines, "No matching aliases")
+		return strings.Join(lines, "\n")
+	}
+	maxItems := 6
+	for i := 0; i < len(m.filteredImages) && i < maxItems; i++ {
+		prefix := "  "
+		if i == m.createImageCursor {
+			prefix = "> "
+		}
+		lines = append(lines, prefix+m.filteredImages[i])
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (m model) selectedName() string {
@@ -543,6 +707,31 @@ func runExecCmd(backend core.Backend, name string, cmd []string) tea.Cmd {
 	return func() tea.Msg {
 		out, err := backend.Exec(context.Background(), name, cmd)
 		return execDoneMsg{out: out, err: err}
+	}
+}
+
+func createCmd(backend core.Backend, image, name string) tea.Cmd {
+	return func() tea.Msg {
+		err := backend.Launch(context.Background(), image, name)
+		return actionDoneMsg{status: "Created " + name, err: err}
+	}
+}
+
+func normalizeImageRef(image string) string {
+	image = strings.TrimSpace(image)
+	if image == "" {
+		return image
+	}
+	if strings.Contains(image, ":") {
+		return image
+	}
+	return "images:" + image
+}
+
+func loadImageAliasesCmd(backend core.Backend) tea.Cmd {
+	return func() tea.Msg {
+		aliases, err := backend.ImageAliases(context.Background())
+		return imageAliasesLoadedMsg{aliases: aliases, err: err}
 	}
 }
 

@@ -48,6 +48,7 @@ lc restore <name> <snapshot>
 - `j` / `k` or arrows: move selection
 - `/`: focus search filter
 - `r`: refresh list
+- `u`: create container with image picker/autofill (type to filter, `j/k` to choose, then enter name)
 - `enter`: open shell into selected instance (`bash` fallback `sh`)
 - `e`: open exec command prompt and show output in right pane
 - `s`: start/stop toggle
@@ -55,4 +56,3 @@ lc restore <name> <snapshot>
 - `tab`: switch between `UI` and `CLI` modes
 - `t`: cycle right-pane tabs (`Info`, `Logs`, `Snapshots`) in `UI` mode
 - `q`: quit
-

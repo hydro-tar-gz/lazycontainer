@@ -31,7 +31,14 @@ func (c *Client) ListInstances(ctx context.Context) ([]core.Instance, error) {
 
 func (c *Client) Launch(ctx context.Context, image, name string) error {
 	_, err := c.runner.Run(ctx, "lxc", "launch", image, name)
-	return err
+	if err == nil {
+		return nil
+	}
+	logs, logErr := c.runner.Run(ctx, "lxc", "info", name, "--show-log")
+	if logErr != nil || strings.TrimSpace(string(logs)) == "" {
+		return err
+	}
+	return fmt.Errorf("%w\n--- lxc info %s --show-log ---\n%s", err, name, strings.TrimSpace(string(logs)))
 }
 
 func (c *Client) Start(ctx context.Context, name string) error {
@@ -121,4 +128,12 @@ func (c *Client) Snapshots(ctx context.Context, name string) (string, error) {
 		return "", err
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+func (c *Client) ImageAliases(ctx context.Context) ([]string, error) {
+	out, err := c.runner.Run(ctx, "lxc", "image", "list", "images:", "--format", "json")
+	if err != nil {
+		return nil, err
+	}
+	return parseImageAliasesJSON(out)
 }

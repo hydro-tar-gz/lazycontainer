@@ -22,4 +22,5 @@ type Backend interface {
 	Restore(ctx context.Context, name, snapshot string) error
 	Logs(ctx context.Context, name string) (string, error)
 	Snapshots(ctx context.Context, name string) (string, error)
+	ImageAliases(ctx context.Context) ([]string, error)
 }
