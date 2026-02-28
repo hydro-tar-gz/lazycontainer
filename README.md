@@ -8,6 +8,10 @@
 ```                                                                                                          
 # a lazy lxc & lxd tui
 
+## a fair warning before you use this
+
+- this may not work on arch please dont use this on arch unless you know how to configure it
+
 ## prerequisites
 
 - Go 1.22+
