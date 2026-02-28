@@ -21,7 +21,7 @@ go install ./cmd/lc
 lc
 ```
 
-Alternative local build:
+alternative local build:
 
 ```bash
 go build -o lc ./cmd/lc
