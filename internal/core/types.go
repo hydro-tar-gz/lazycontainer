@@ -2,7 +2,6 @@ package core
 
 import "context"
 
-// Instance is a normalized view for both CLI and TUI.
 type Instance struct {
 	Name  string `json:"name"`
 	State string `json:"state"`
@@ -10,7 +9,6 @@ type Instance struct {
 	Image string `json:"image"`
 }
 
-// Backend provides instance lifecycle and shell/exec operations.
 type Backend interface {
 	ListInstances(ctx context.Context) ([]Instance, error)
 	Launch(ctx context.Context, image, name string) error

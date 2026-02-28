@@ -7,7 +7,6 @@ import (
 	"os/exec"
 )
 
-// Runner abstracts command execution for testability.
 type Runner interface {
 	Run(ctx context.Context, name string, args ...string) ([]byte, error)
 }
