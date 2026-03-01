@@ -20,45 +20,45 @@
 
 ## build & run
 
-if `lc` is not found after `go install`, add Go's bin dir to your shell `PATH` first.
+if `lc` is not found after `go install` (which it probably isn't), add go's bin dir to your shell `PATH` first.
 
 bash:
 
-```bash
+```
 echo 'export PATH="$PATH:$(go env GOPATH)/bin"' >> ~/.bashrc
 source ~/.bashrc
 ```
 
 zsh:
 
-```zsh
+```
 echo 'export PATH="$PATH:$(go env GOPATH)/bin"' >> ~/.zshrc
 source ~/.zshrc
 ```
 
 fish:
 
-```fish
+```
 fish_add_path (go env GOPATH)/bin
 ```
 
 then install and run:
 
-```bash
+```
 go install ./cmd/lc
 lc
 ```
 
 alternative local build:
 
-```bash
+```
 go build -o lc ./cmd/lc
 ./lc
 ```
 
 ## cli commands
 
-```bash
+```
 lc ls [--json]
 lc up <image> --name <name>
 lc start <name>
@@ -76,11 +76,11 @@ lc restore <name> <snapshot>
 - `j` / `k` or arrows: move selection
 - `/`: focus search filter
 - `r`: refresh list
-- `u`: create container with image picker/autofill (type to filter, `j/k` to choose, then enter name)
-- `enter`: open shell into selected instance (`bash` fallback `sh`)
+- `u`: create container with image picker/autofill 
+- `enter`: open shell into selected instance 
 - `e`: open exec command prompt and show output in right pane
 - `s`: start/stop toggle
-- `d`: delete selected instance (confirmation required)
+- `d`: delete selected instance 
 - `tab`: switch between `UI` and `CLI` modes
-- `t`: cycle right-pane tabs (`Info`, `Logs`, `Snapshots`) in `UI` mode
+- `t`: cycle right-pane tabs
 - `q`: quit
