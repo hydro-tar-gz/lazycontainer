@@ -20,6 +20,30 @@
 
 ## build & run
 
+if `lc` is not found after `go install`, add Go's bin dir to your shell `PATH` first.
+
+bash:
+
+```bash
+echo 'export PATH="$PATH:$(go env GOPATH)/bin"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+zsh:
+
+```zsh
+echo 'export PATH="$PATH:$(go env GOPATH)/bin"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+fish:
+
+```fish
+fish_add_path (go env GOPATH)/bin
+```
+
+then install and run:
+
 ```bash
 go install ./cmd/lc
 lc
